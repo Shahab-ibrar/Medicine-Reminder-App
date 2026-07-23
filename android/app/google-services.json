@@ -1,0 +1,82 @@
+{
+  "project_info": {
+    "project_number": "1057751147931",
+    "project_id": "midcare-73d85",
+    "storage_bucket": "midcare-73d85.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1057751147931:android:e9d47a3dc92d5264abed3e",
+        "android_client_info": {
+          "package_name": "com.comsats.medremind.medicine_reminder_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1057751147931-8imoe58gsvcophqr2ohg2nstplc0otll.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEEEIR_3pZxnXboTXyKdpNWc6aGzGIE8k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1057751147931-8imoe58gsvcophqr2ohg2nstplc0otll.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1057751147931-mjubhiv3skm5f8h3scu2uf7d8ah8kv6v.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.comsats.medremind.medicineReminderApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1057751147931:android:541622ae86e79103abed3e",
+        "android_client_info": {
+          "package_name": "com.example.firebase_demo"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1057751147931-8imoe58gsvcophqr2ohg2nstplc0otll.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEEEIR_3pZxnXboTXyKdpNWc6aGzGIE8k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1057751147931-8imoe58gsvcophqr2ohg2nstplc0otll.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1057751147931-mjubhiv3skm5f8h3scu2uf7d8ah8kv6v.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.comsats.medremind.medicineReminderApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
