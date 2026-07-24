@@ -4,6 +4,8 @@ import 'package:flutter/material.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_10y.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
 
 /// Singleton service for scheduling and cancelling local notifications.
 /// All public methods are no-ops on Flutter Web (kIsWeb) because
@@ -16,6 +18,38 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;
+
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  final Map<int, Timer> _webTimers = {};
+
+  void _playReminderSound() async {
+    if (kIsWeb) {
+      try {
+        await _audioPlayer.play(AssetSource('audio/medicine_alarm.mp3'));
+      } catch (e) {
+        debugPrint('NotificationService: Audio error - $e');
+      }
+    }
+  }
+
+  void _scheduleWebAudio(int id, DateTime scheduledDateTime, {Duration? repeatInterval}) {
+    if (!kIsWeb) return;
+    _webTimers[id]?.cancel();
+    final delay = scheduledDateTime.difference(DateTime.now());
+    if (delay.isNegative) return;
+
+    if (repeatInterval == null) {
+      _webTimers[id] = Timer(delay, () {
+        _playReminderSound();
+        _webTimers.remove(id);
+      });
+    } else {
+      _webTimers[id] = Timer(delay, () {
+        _playReminderSound();
+        _webTimers[id] = Timer.periodic(repeatInterval, (_) => _playReminderSound());
+      });
+    }
+  }
 
   /// True when running natively on a supported mobile/desktop platform.
   bool get isSupported =>
@@ -33,13 +67,14 @@ class NotificationService {
   NotificationDetails _buildNotificationDetails() {
     return NotificationDetails(
       android: AndroidNotificationDetails(
-        'medicine_alarm_channel',
+        'medicine_alarm_channel_v2',
         'Medicine Alarms',
         channelDescription:
             'High-priority alarm channel for medicine reminders',
         importance: Importance.max,
         priority: Priority.max,
         playSound: true,
+        sound: const RawResourceAndroidNotificationSound('medicine_alarm'),
         enableVibration: true,
         vibrationPattern:
             Int64List.fromList([0, 500, 250, 500, 250, 500]),
@@ -55,6 +90,7 @@ class NotificationService {
         presentAlert: true,
         presentBadge: true,
         presentSound: true,
+        sound: 'medicine_alarm.mp3',
       ),
     );
   }
@@ -142,6 +178,8 @@ class NotificationService {
     required DateTime scheduledDateTime,
     String? payload,
   }) async {
+    _scheduleWebAudio(id, scheduledDateTime);
+
     if (!_initialized || !isSupported) return;
 
     if (scheduledDateTime.isBefore(DateTime.now())) {
@@ -182,6 +220,12 @@ class NotificationService {
     required String repeatType,
     String? payload,
   }) async {
+    Duration? interval;
+    if (repeatType == 'Daily') interval = const Duration(days: 1);
+    else if (repeatType == 'Weekly') interval = const Duration(days: 7);
+    else if (repeatType == 'Monthly') interval = const Duration(days: 30);
+    _scheduleWebAudio(id, scheduledDateTime, repeatInterval: interval);
+
     if (!_initialized || !isSupported) return;
 
     if (repeatType == 'One Time') {
@@ -234,6 +278,9 @@ class NotificationService {
   // ─── Cancellation ────────────────────────────────────────────────────────────
 
   Future<void> cancelNotification(int id) async {
+    _webTimers[id]?.cancel();
+    _webTimers.remove(id);
+
     if (!_initialized || !isSupported) return;
     try {
       await _notificationsPlugin.cancel(id: id);
@@ -244,6 +291,11 @@ class NotificationService {
   }
 
   Future<void> cancelAllNotifications() async {
+    for (var timer in _webTimers.values) {
+      timer.cancel();
+    }
+    _webTimers.clear();
+
     if (!_initialized || !isSupported) return;
     try {
       await _notificationsPlugin.cancelAll();
