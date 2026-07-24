@@ -42,7 +42,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
 
     if (success && mounted) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+      if (authProvider.isFirebaseEnabled) {
+        // Firebase mode: user must verify email before logging in
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Verify Your Email'),
+            content: const Text(
+              'A verification email has been sent to your email address.\n\n'
+              'Please check your inbox and click the verification link before logging in.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).pushReplacementNamed('/login');
+                },
+                child: const Text('Go to Login'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        // Sandbox mode: no email verification required
+        Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+      }
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -52,6 +77,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

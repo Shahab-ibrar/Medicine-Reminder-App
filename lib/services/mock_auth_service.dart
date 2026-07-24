@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show File;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:medicine_reminder_app/models/user_profile.dart';
 import 'package:medicine_reminder_app/services/auth_service.dart';
 
 class MockAuthService implements AuthService {
-  final StreamController<UserProfile?> _authController = StreamController<UserProfile?>.broadcast();
+  final StreamController<UserProfile?> _authController =
+      StreamController<UserProfile?>.broadcast();
   UserProfile? _currentUser;
-  
+
   static const String _prefUserKey = 'mock_current_user';
   static const String _prefUsersListKey = 'mock_registered_users';
 
@@ -25,7 +27,8 @@ class MockAuthService implements AuthService {
         final uid = data['uid'] ?? 'mock-uid';
         _currentUser = UserProfile.fromJson(data, uid);
         _authController.add(_currentUser);
-        debugPrint('MockAuthService: Loaded session for user ${_currentUser?.email}');
+        debugPrint(
+            'MockAuthService: Loaded session for user ${_currentUser?.email}');
       } else {
         _authController.add(null);
       }
@@ -77,8 +80,10 @@ class MockAuthService implements AuthService {
     };
     await prefs.setString(_prefUsersListKey, json.encode(users));
 
+    // In sandbox mode: registration succeeds and sets the user (no email check)
     _currentUser = profile;
-    await prefs.setString(_prefUserKey, json.encode(profile.toJson()..['uid'] = uid));
+    await prefs.setString(
+        _prefUserKey, json.encode(profile.toJson()..['uid'] = uid));
     _authController.add(_currentUser);
 
     return _currentUser;
@@ -96,15 +101,17 @@ class MockAuthService implements AuthService {
     final Map<String, dynamic> users = json.decode(usersJson);
 
     final normalizedEmail = email.toLowerCase();
-    if (!users.containsKey(normalizedEmail) || users[normalizedEmail]['password'] != password) {
+    if (!users.containsKey(normalizedEmail) ||
+        users[normalizedEmail]['password'] != password) {
       throw Exception('Invalid email or password.');
     }
 
     final userData = users[normalizedEmail];
     final uid = userData['uid'];
     _currentUser = UserProfile.fromJson(userData, uid);
-    
-    await prefs.setString(_prefUserKey, json.encode(_currentUser!.toJson()..['uid'] = uid));
+
+    await prefs.setString(
+        _prefUserKey, json.encode(_currentUser!.toJson()..['uid'] = uid));
     _authController.add(_currentUser);
 
     return _currentUser;
@@ -123,6 +130,19 @@ class MockAuthService implements AuthService {
     debugPrint('MockAuthService: Password reset email sent to $email');
   }
 
+  /// No-op in sandbox mode – email verification is not simulated.
+  @override
+  Future<void> sendEmailVerification() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    debugPrint('MockAuthService: sendEmailVerification called (sandbox no-op)');
+  }
+
+  /// No-op in sandbox mode – user reload is not needed.
+  @override
+  Future<void> reloadUser() async {
+    debugPrint('MockAuthService: reloadUser called (sandbox no-op)');
+  }
+
   @override
   Future<void> signOut() async {
     final prefs = await SharedPreferences.getInstance();
@@ -133,7 +153,10 @@ class MockAuthService implements AuthService {
   }
 
   @override
-  Future<UserProfile?> updateProfile({required String name, required int age}) async {
+  Future<UserProfile?> updateProfile({
+    required String name,
+    required int age,
+  }) async {
     if (_currentUser == null) throw Exception('No user signed in.');
 
     await Future.delayed(const Duration(milliseconds: 500));
@@ -145,10 +168,12 @@ class MockAuthService implements AuthService {
       email: _currentUser!.email,
       age: age,
       createdAt: _currentUser!.createdAt,
+      photoUrl: _currentUser!.photoUrl,
     );
 
     _currentUser = updated;
-    await prefs.setString(_prefUserKey, json.encode(updated.toJson()..['uid'] = updated.uid));
+    await prefs.setString(
+        _prefUserKey, json.encode(updated.toJson()..['uid'] = updated.uid));
 
     final usersJson = prefs.getString(_prefUsersListKey) ?? '{}';
     final Map<String, dynamic> users = json.decode(usersJson);
@@ -159,6 +184,32 @@ class MockAuthService implements AuthService {
       users[updated.email] = userData;
       await prefs.setString(_prefUsersListKey, json.encode(users));
     }
+
+    _authController.add(_currentUser);
+    return _currentUser;
+  }
+
+  /// Stub: saves the local file path as the photo URL in sandbox mode.
+  @override
+  Future<UserProfile?> updateProfilePhoto({
+    File? imageFile,
+    Uint8List? imageBytes,
+    required String fileName,
+  }) async {
+    if (_currentUser == null) throw Exception('No user signed in.');
+
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // In sandbox mode, use a local file URI as the photo URL
+    final photoUrl = imageFile?.path ?? 'mock_photo_$fileName';
+
+    final updated = _currentUser!.copyWith(photoUrl: photoUrl);
+    _currentUser = updated;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _prefUserKey,
+        json.encode(updated.toJson()..['uid'] = updated.uid));
 
     _authController.add(_currentUser);
     return _currentUser;

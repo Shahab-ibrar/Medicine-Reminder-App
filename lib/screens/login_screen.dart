@@ -34,14 +34,62 @@ class _LoginScreenState extends State<LoginScreen> {
     if (success && mounted) {
       Navigator.of(context).pushReplacementNamed('/home');
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authProvider.errorMessage ?? 'Authentication failed'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      if (authProvider.errorMessage == 'email-not-verified') {
+        // Show the email verification dialog
+        await _showEmailVerificationDialog(authProvider);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(authProvider.errorMessage ?? 'Authentication failed'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
+
+  Future<void> _showEmailVerificationDialog(AuthProvider authProvider) async {
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Email Not Verified'),
+        content: const Text(
+          'Your email address has not been verified yet.\n\n'
+          'Please check your inbox and click the verification link, '
+          'then press "Refresh" to try logging in again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              await authProvider.sendEmailVerification();
+              if (ctx.mounted) {
+                Navigator.of(ctx).pop();
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'Verification email sent. Please check your inbox.'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+            child: const Text('Resend Email'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await authProvider.reloadUser();
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              // Re-attempt sign in to check updated email verification status
+              if (mounted) await _submit();
+            },
+            child: const Text('Refresh Status'),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {

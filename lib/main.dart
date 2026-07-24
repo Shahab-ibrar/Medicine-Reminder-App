@@ -28,8 +28,10 @@ Future<void> main() async {
   // Initialize Service Locator
   await locator.init();
 
-  // Initialize Notifications
-  await NotificationService().init();
+  // Initialize Notifications and request permissions
+  final notificationService = NotificationService();
+  await notificationService.init();
+  await notificationService.requestPermissions();
 
   runApp(const MyApp());
 }

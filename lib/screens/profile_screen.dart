@@ -1,4 +1,7 @@
+import 'dart:io' show File;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:medicine_reminder_app/providers/auth_provider.dart';
 import 'package:medicine_reminder_app/providers/theme_provider.dart';
@@ -21,7 +24,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     _nameController = TextEditingController(text: authProvider.user?.name);
-    _ageController = TextEditingController(text: authProvider.user?.age.toString());
+    _ageController =
+        TextEditingController(text: authProvider.user?.age.toString());
   }
 
   @override
@@ -33,10 +37,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _updateProfile() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final age = int.parse(_ageController.text.trim());
-    
+
     final success = await authProvider.updateProfile(
       name: _nameController.text.trim(),
       age: age,
@@ -55,10 +59,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(authProvider.errorMessage ?? 'Failed to update profile'),
+          content:
+              Text(authProvider.errorMessage ?? 'Failed to update profile'),
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
+    }
+  }
+
+  /// Opens image picker and uploads the selected photo.
+  Future<void> _pickAndUploadPhoto() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final picker = ImagePicker();
+
+    try {
+      final XFile? picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 80,
+      );
+      if (picked == null || !mounted) return;
+
+      bool success;
+      if (kIsWeb) {
+        // Web: read as bytes
+        final bytes = await picked.readAsBytes();
+        success = await authProvider.updateProfilePhoto(
+          imageBytes: bytes,
+          fileName: picked.name,
+        );
+      } else {
+        // Mobile / Desktop: use file path
+        success = await authProvider.updateProfilePhoto(
+          imageFile: File(picked.path),
+          fileName: picked.name,
+        );
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success
+                ? 'Profile photo updated!'
+                : (authProvider.errorMessage ?? 'Failed to upload photo')),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking image: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -79,20 +136,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.all(20.0),
               child: Column(
                 children: [
-                  CircleAvatar(
-                    radius: 40,
-                    backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
-                    child: Text(
-                      user?.name.isNotEmpty == true ? user!.name[0].toUpperCase() : 'U',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
-                      ),
+                  // ── Profile Avatar with camera overlay ─────────────────
+                  GestureDetector(
+                    onTap: _pickAndUploadPhoto,
+                    child: Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        authProvider.isLoading
+                            ? CircleAvatar(
+                                radius: 40,
+                                backgroundColor: theme.colorScheme.primary
+                                    .withOpacity(0.1),
+                                child: const CircularProgressIndicator(),
+                              )
+                            : (user?.photoUrl != null && user!.photoUrl!.isNotEmpty
+                                ? CircleAvatar(
+                                    radius: 40,
+                                    backgroundImage:
+                                        NetworkImage(user.photoUrl!),
+                                    onBackgroundImageError: (Object e, StackTrace? st) {},
+                                  )
+                                : CircleAvatar(
+                                    radius: 40,
+                                    backgroundColor: theme.colorScheme.primary
+                                        .withOpacity(0.1),
+                                    child: Text(
+                                      user?.name.isNotEmpty == true
+                                          ? user!.name[0].toUpperCase()
+                                          : 'U',
+                                      style: TextStyle(
+                                        fontSize: 32,
+                                        fontWeight: FontWeight.bold,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                    ),
+                                  )),
+                        // Camera icon overlay
+                        Container(
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: const EdgeInsets.all(4),
+                          child: const Icon(Icons.camera_alt,
+                              size: 16, color: Colors.white),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   Form(
                     key: _formKey,
                     child: _isEditing
@@ -100,9 +193,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               TextFormField(
                                 controller: _nameController,
-                                decoration: const InputDecoration(labelText: 'Name'),
+                                decoration:
+                                    const InputDecoration(labelText: 'Name'),
                                 validator: (value) {
-                                  if (value == null || value.trim().isEmpty) return 'Enter your name';
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Enter your name';
+                                  }
                                   return null;
                                 },
                               ),
@@ -110,11 +206,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               TextFormField(
                                 controller: _ageController,
                                 keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(labelText: 'Age'),
+                                decoration:
+                                    const InputDecoration(labelText: 'Age'),
                                 validator: (value) {
-                                  if (value == null || value.trim().isEmpty) return 'Enter your age';
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Enter your age';
+                                  }
                                   final age = int.tryParse(value);
-                                  if (age == null || age <= 0 || age > 120) return 'Enter valid age';
+                                  if (age == null || age <= 0 || age > 120) {
+                                    return 'Enter valid age';
+                                  }
                                   return null;
                                 },
                               ),
@@ -126,26 +227,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     onPressed: () {
                                       setState(() {
                                         _isEditing = false;
-                                        _nameController.text = user?.name ?? '';
-                                        _ageController.text = user?.age.toString() ?? '';
+                                        _nameController.text =
+                                            user?.name ?? '';
+                                        _ageController.text =
+                                            user?.age.toString() ?? '';
                                       });
                                     },
                                     child: const Text('Cancel'),
                                   ),
                                   const SizedBox(width: 16),
                                   ElevatedButton(
-                                    onPressed: authProvider.isLoading ? null : _updateProfile,
+                                    onPressed: authProvider.isLoading
+                                        ? null
+                                        : _updateProfile,
                                     child: const Text('Save'),
                                   ),
                                 ],
-                              )
+                              ),
                             ],
                           )
                         : Column(
                             children: [
                               Text(
                                 user?.name ?? 'User Name',
-                                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 4),
                               Text(
@@ -155,7 +261,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               const SizedBox(height: 4),
                               Text(
                                 'Age: ${user?.age ?? 0} years old',
-                                style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w500),
+                                style: TextStyle(
+                                    color: Colors.grey[700],
+                                    fontWeight: FontWeight.w500),
                               ),
                               const SizedBox(height: 12),
                               OutlinedButton.icon(
@@ -184,21 +292,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          
+
           Card(
             child: Column(
               children: [
                 SwitchListTile(
                   secondary: const Icon(Icons.accessibility_new_rounded),
                   title: const Text('Elderly Mode'),
-                  subtitle: const Text('Increases text size and contrast for readability'),
+                  subtitle: const Text(
+                      'Increases text size and contrast for readability'),
                   value: themeProvider.isElderlyMode,
                   onChanged: (val) {
                     themeProvider.toggleElderlyMode(val);
                   },
                 ),
                 const Divider(height: 1),
-                
+
                 SwitchListTile(
                   secondary: const Icon(Icons.dark_mode_outlined),
                   title: const Text('Dark Mode'),
@@ -213,16 +322,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 SwitchListTile(
                   secondary: const Icon(Icons.cloud_sync_rounded),
                   title: const Text('Firebase Sync'),
-                  subtitle: const Text('Store and read data in real-time Firestore'),
+                  subtitle: const Text(
+                      'Store and read data in real-time Firestore'),
                   value: authProvider.isFirebaseEnabled,
                   onChanged: (val) async {
+                    final nav = Navigator.of(context);
+                    final messenger = ScaffoldMessenger.of(context);
                     await authProvider.toggleServiceMode(val);
                     if (mounted) {
-                      Navigator.of(context).pushReplacementNamed('/login');
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      nav.pushReplacementNamed('/login');
+                      messenger.showSnackBar(
                         SnackBar(
-                          content: Text(val 
-                              ? 'Logged out and switched to Firebase Mode.' 
+                          content: Text(val
+                              ? 'Logged out and switched to Firebase Mode.'
                               : 'Logged out and switched to Sandbox Mode.'),
                         ),
                       );
@@ -251,12 +363,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildProjectRow('Project Name', 'Medicine Reminder App'),
                   _buildProjectRow('Course', 'Mobile Application Development'),
                   _buildProjectRow('Submitted To', 'Sir. Jawad Khan'),
-                  _buildProjectRow('Institution', 'Comsats University Islamabad, Abbottabad Campus'),
+                  _buildProjectRow('Institution',
+                      'Comsats University Islamabad, Abbottabad Campus'),
                   const Divider(),
                   const SizedBox(height: 8),
                   Text(
                     'Group Members:',
-                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 4),
                   _buildMemberRow('Shahab Ibrar', 'FA23-bcs-103'),
@@ -270,11 +384,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           ElevatedButton.icon(
             onPressed: () async {
+              final nav = Navigator.of(context);
               final confirm = await showDialog<bool>(
                 context: context,
                 builder: (context) => AlertDialog(
                   title: const Text('Log Out'),
-                  content: const Text('Are you sure you want to log out of your account?'),
+                  content: const Text(
+                      'Are you sure you want to log out of your account?'),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(false),
@@ -282,7 +398,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(true),
-                      style: TextButton.styleFrom(foregroundColor: Colors.red),
+                      style:
+                          TextButton.styleFrom(foregroundColor: Colors.red),
                       child: const Text('Log Out'),
                     ),
                   ],
@@ -292,7 +409,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (confirm == true && mounted) {
                 await authProvider.signOut();
                 if (mounted) {
-                  Navigator.of(context).pushReplacementNamed('/login');
+                  nav.pushReplacementNamed('/login');
                 }
               }
             },
@@ -319,7 +436,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text('$label: ',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
           Expanded(child: Text(value)),
         ],
       ),

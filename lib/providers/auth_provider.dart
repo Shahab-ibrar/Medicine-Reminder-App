@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show File;
 import 'package:flutter/foundation.dart';
 import 'package:medicine_reminder_app/models/user_profile.dart';
 import 'package:medicine_reminder_app/services/service_locator.dart';
@@ -106,6 +107,9 @@ class AuthProvider with ChangeNotifier {
         _errorMessage = 'Please enter a valid email address.';
       } else if (error.contains('network-request-failed')) {
         _errorMessage = 'No internet connection.';
+      } else if (error.contains('email-not-verified')) {
+        // Propagate this specific error so the UI can show the verify dialog
+        _errorMessage = 'email-not-verified';
       } else {
         _errorMessage = error;
       }
@@ -130,6 +134,26 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// Sends a verification email to the current user.
+  Future<bool> sendEmailVerification() async {
+    _setLoading(true);
+    try {
+      await locator.authService.sendEmailVerification();
+      _errorMessage = null;
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  /// Reloads the Firebase user to refresh email verification status.
+  Future<void> reloadUser() async {
+    await locator.authService.reloadUser();
+  }
+
   Future<void> signOut() async {
     _setLoading(true);
     try {
@@ -150,6 +174,34 @@ class AuthProvider with ChangeNotifier {
       final updated = await locator.authService.updateProfile(
         name: name,
         age: age,
+      );
+      if (updated != null) {
+        _user = updated;
+      }
+      _errorMessage = null;
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  /// Picks and uploads a profile photo.
+  /// [imageFile] is used on mobile; [imageBytes] + [fileName] on web.
+  Future<bool> updateProfilePhoto({
+    File? imageFile,
+    Uint8List? imageBytes,
+    required String fileName,
+  }) async {
+    if (_user == null) return false;
+    _setLoading(true);
+    try {
+      final updated = await locator.authService.updateProfilePhoto(
+        imageFile: imageFile,
+        imageBytes: imageBytes,
+        fileName: fileName,
       );
       if (updated != null) {
         _user = updated;

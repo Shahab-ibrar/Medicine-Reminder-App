@@ -22,6 +22,14 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
   bool _isEditing = false;
   Medicine? _editingMedicine;
   bool _isLoading = false;
+  String _selectedRepeat = 'One Time'; // Feature 4: Repeat scheduling
+
+  static const List<String> _repeatOptions = [
+    'One Time',
+    'Daily',
+    'Weekly',
+    'Monthly',
+  ];
 
   @override
   void didChangeDependencies() {
@@ -33,6 +41,7 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
       _nameController.text = args.medicineName;
       _dosageController.text = args.dosage;
       _notesController.text = args.notes;
+      _selectedRepeat = args.repeatType; // load existing repeat type
 
       _selectedDate = DateTime.tryParse(args.date) ?? DateTime.now();
 
@@ -115,6 +124,7 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
         notes: _notesController.text.trim(),
         date: dateStr,
         time: timeStr,
+        repeatType: _selectedRepeat, // persist repeat type on edit
       );
       success = await medProvider.updateMedicine(updatedMed);
     } else {
@@ -124,6 +134,7 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
         notes: _notesController.text.trim(),
         date: dateStr,
         time: timeStr,
+        repeatType: _selectedRepeat, // pass repeat type on add
       );
     }
 
@@ -276,6 +287,30 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // ── Repeat schedule dropdown (Feature 4) ──────────────
+                    DropdownButtonFormField<String>(
+                      value: _selectedRepeat,
+                      decoration: InputDecoration(
+                        labelText: 'Repeat Schedule',
+                        prefixIcon: const Icon(Icons.repeat_rounded),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      items: _repeatOptions
+                          .map((option) => DropdownMenuItem(
+                                value: option,
+                                child: Text(option),
+                              ))
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => _selectedRepeat = value);
+                        }
+                      },
                     ),
                     const SizedBox(height: 32),
 

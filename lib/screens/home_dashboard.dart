@@ -78,18 +78,26 @@ class _HomeDashboardState extends State<HomeDashboard> {
               ),
               currentAccountPicture: CircleAvatar(
                 backgroundColor: Colors.white,
-                child: Text(
-                  user?.name.isNotEmpty == true ? user!.name[0].toUpperCase() : 'U',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
+                backgroundImage: user?.photoUrl != null && user!.photoUrl!.isNotEmpty
+                    ? NetworkImage(user.photoUrl!) as ImageProvider
+                    : null,
+                child: user?.photoUrl == null || user!.photoUrl!.isEmpty
+                    ? Text(
+                        user?.name.isNotEmpty == true
+                            ? user!.name[0].toUpperCase()
+                            : 'U',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.primary,
+                        ),
+                      )
+                    : null,
               ),
               accountName: Text(
                 user?.name ?? 'User',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                style:
+                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
               ),
               accountEmail: Text(user?.email ?? 'No email'),
             ),

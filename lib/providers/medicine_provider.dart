@@ -67,18 +67,46 @@ class MedicineProvider with ChangeNotifier {
     }
   }
 
+  // ─── Scheduling helper ───────────────────────────────────────────────────────
+
+  /// Schedules (or re-schedules) the notification for [medicine].
+  /// Uses repeating scheduling for Daily/Weekly/Monthly, one-time otherwise.
+  Future<void> _scheduleNotificationForMedicine(Medicine medicine) async {
+    await _notificationService.cancelNotification(medicine.notificationId);
+
+    if (medicine.status != 'Pending') return;
+
+    final scheduledTime = medicine.scheduledDateTime;
+    final now = DateTime.now();
+
+    // For one-time, only schedule if in the future
+    if (medicine.repeatType == 'One Time' && scheduledTime.isBefore(now)) return;
+
+    await _notificationService.scheduleRepeatingNotification(
+      id: medicine.notificationId,
+      title: 'Medication Reminder: ${medicine.medicineName}',
+      body:
+          'It\'s time to take your dosage: ${medicine.dosage}${medicine.notes.isNotEmpty ? ' (${medicine.notes})' : ''}',
+      scheduledDateTime: scheduledTime,
+      repeatType: medicine.repeatType,
+      payload: medicine.id,
+    );
+  }
+
+  // ─── CRUD ────────────────────────────────────────────────────────────────────
+
   Future<bool> addMedicine({
     required String name,
     required String dosage,
     required String date,
     required String time,
     required String notes,
+    String repeatType = 'One Time', // new optional parameter
   }) async {
     if (_userId == null) return false;
 
-    final int notificationId = DateTime.now().millisecondsSinceEpoch.remainder(
-      1000000,
-    );
+    final int notificationId =
+        DateTime.now().millisecondsSinceEpoch.remainder(1000000);
 
     final medicine = Medicine(
       id: '',
@@ -90,22 +118,12 @@ class MedicineProvider with ChangeNotifier {
       notes: notes,
       status: 'Pending',
       notificationId: notificationId,
+      repeatType: repeatType,
     );
 
     try {
       final savedMed = await locator.databaseService.addMedicine(medicine);
-
-      final scheduledTime = savedMed.scheduledDateTime;
-      if (scheduledTime.isAfter(DateTime.now())) {
-        await _notificationService.scheduleNotification(
-          id: savedMed.notificationId,
-          title: 'Medication Reminder: ${savedMed.medicineName}',
-          body:
-              'It\'s time to take your dosage: ${savedMed.dosage} (${savedMed.notes})',
-          scheduledDateTime: scheduledTime,
-          payload: savedMed.id,
-        );
-      }
+      await _scheduleNotificationForMedicine(savedMed);
       return true;
     } catch (e) {
       debugPrint('Error adding medicine: $e');
@@ -116,22 +134,7 @@ class MedicineProvider with ChangeNotifier {
   Future<bool> updateMedicine(Medicine medicine) async {
     try {
       await locator.databaseService.updateMedicine(medicine);
-
-      await _notificationService.cancelNotification(medicine.notificationId);
-
-      if (medicine.status == 'Pending') {
-        final scheduledTime = medicine.scheduledDateTime;
-        if (scheduledTime.isAfter(DateTime.now())) {
-          await _notificationService.scheduleNotification(
-            id: medicine.notificationId,
-            title: 'Medication Reminder: ${medicine.medicineName}',
-            body:
-                'It\'s time to take your dosage: ${medicine.dosage} (${medicine.notes})',
-            scheduledDateTime: scheduledTime,
-            payload: medicine.id,
-          );
-        }
-      }
+      await _scheduleNotificationForMedicine(medicine);
       return true;
     } catch (e) {
       debugPrint('Error updating medicine: $e');
@@ -157,6 +160,12 @@ class MedicineProvider with ChangeNotifier {
 
   Future<bool> markAsMissed(Medicine medicine) async {
     final updated = medicine.copyWith(status: 'Missed');
+    return await updateMedicine(updated);
+  }
+
+  /// Marks medicine as Skipped (new status for Feature 3).
+  Future<bool> markAsSkipped(Medicine medicine) async {
+    final updated = medicine.copyWith(status: 'Skipped');
     return await updateMedicine(updated);
   }
 

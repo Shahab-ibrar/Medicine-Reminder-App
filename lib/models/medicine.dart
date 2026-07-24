@@ -1,3 +1,10 @@
+/// Represents a single medicine reminder entry.
+///
+/// New fields added (all backward-compatible with defaults):
+///   - [repeatType]: 'One Time' | 'Daily' | 'Weekly' | 'Monthly' (default 'One Time')
+///
+/// Existing status values: 'Pending', 'Taken', 'Missed'
+/// New status value added:  'Skipped'
 class Medicine {
   final String id;
   final String userId;
@@ -6,8 +13,9 @@ class Medicine {
   final String date; // yyyy-MM-dd
   final String time; // hh:mm a (e.g. 08:00 AM)
   final String notes;
-  final String status; // Pending, Taken, Missed
+  final String status; // Pending, Taken, Missed, Skipped
   final int notificationId;
+  final String repeatType; // One Time, Daily, Weekly, Monthly
 
   Medicine({
     required this.id,
@@ -19,6 +27,7 @@ class Medicine {
     required this.notes,
     required this.status,
     required this.notificationId,
+    this.repeatType = 'One Time', // default keeps existing records compatible
   });
 
   DateTime get scheduledDateTime {
@@ -30,7 +39,8 @@ class Medicine {
 
       final timeClean = time.trim();
       final amPm = timeClean.substring(timeClean.length - 2).toUpperCase();
-      final timeParts = timeClean.substring(0, timeClean.length - 2).trim().split(':');
+      final timeParts =
+          timeClean.substring(0, timeClean.length - 2).trim().split(':');
       var hour = int.parse(timeParts[0]);
       final minute = int.parse(timeParts[1]);
 
@@ -62,6 +72,7 @@ class Medicine {
     String? notes,
     String? status,
     int? notificationId,
+    String? repeatType,
   }) {
     return Medicine(
       id: id ?? this.id,
@@ -73,6 +84,7 @@ class Medicine {
       notes: notes ?? this.notes,
       status: status ?? this.status,
       notificationId: notificationId ?? this.notificationId,
+      repeatType: repeatType ?? this.repeatType,
     );
   }
 
@@ -87,6 +99,7 @@ class Medicine {
       notes: json['notes'] ?? '',
       status: json['status'] ?? 'Pending',
       notificationId: json['notificationId'] ?? 0,
+      repeatType: json['repeatType'] ?? 'One Time', // backward-compatible default
     );
   }
 
@@ -100,6 +113,7 @@ class Medicine {
       'notes': notes,
       'status': status,
       'notificationId': notificationId,
+      'repeatType': repeatType, // new field written on all saves
     };
   }
 }

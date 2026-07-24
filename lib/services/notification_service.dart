@@ -1,80 +1,140 @@
-import 'dart:io';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_10y.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
+/// Singleton service for scheduling and cancelling local notifications.
+/// All public methods are no-ops on Flutter Web (kIsWeb) because
+/// flutter_local_notifications does not support web.
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+      FlutterLocalNotificationsPlugin();
   bool _initialized = false;
 
-  bool get isSupported => !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+  /// True when running natively on a supported mobile/desktop platform.
+  bool get isSupported =>
+      !kIsWeb &&
+      (Platform.isAndroid ||
+          Platform.isIOS ||
+          Platform.isWindows ||
+          Platform.isLinux ||
+          Platform.isMacOS);
+
+  // ─── Notification details builder ───────────────────────────────────────────
+
+  /// Build notification details at call time (not const) because
+  /// vibrationPattern uses Int64List which cannot be const.
+  NotificationDetails _buildNotificationDetails() {
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        'medicine_alarm_channel',
+        'Medicine Alarms',
+        channelDescription:
+            'High-priority alarm channel for medicine reminders',
+        importance: Importance.max,
+        priority: Priority.max,
+        playSound: true,
+        enableVibration: true,
+        vibrationPattern:
+            Int64List.fromList([0, 500, 250, 500, 250, 500]),
+        enableLights: true,
+        ledColor: const Color.fromARGB(255, 0, 128, 255),
+        ledOnMs: 1000,
+        ledOffMs: 500,
+        channelShowBadge: true,
+        autoCancel: false,
+        ongoing: false,
+      ),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
+  }
+
+  // ─── Initialization ─────────────────────────────────────────────────────────
 
   Future<void> init() async {
-    if (_initialized) return;
-    if (!isSupported) {
-      debugPrint('Notifications are not supported on this platform.');
+    if (_initialized || !isSupported) {
+      if (kIsWeb) {
+        debugPrint('NotificationService: Web platform – skipping init.');
+      }
       return;
     }
 
     try {
       tz.initializeTimeZones();
 
-      const AndroidInitializationSettings initializationSettingsAndroid =
+      const androidSettings =
           AndroidInitializationSettings('@mipmap/ic_launcher');
 
-      const DarwinInitializationSettings initializationSettingsDarwin =
-          DarwinInitializationSettings(
+      const darwinSettings = DarwinInitializationSettings(
         requestAlertPermission: false,
         requestBadgePermission: false,
         requestSoundPermission: false,
       );
 
-      const InitializationSettings initializationSettings = InitializationSettings(
-        android: initializationSettingsAndroid,
-        iOS: initializationSettingsDarwin,
+      const initSettings = InitializationSettings(
+        android: androidSettings,
+        iOS: darwinSettings,
       );
 
       await _notificationsPlugin.initialize(
-        settings: initializationSettings,
+        settings: initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
-          debugPrint('Notification clicked: ${response.payload}');
+          // Notification tapped: the app is brought to foreground automatically.
+          debugPrint(
+              'NotificationService: tapped – payload: ${response.payload}');
         },
+        onDidReceiveBackgroundNotificationResponse: _onBackgroundNotification,
       );
+
       _initialized = true;
-      debugPrint('Notification Service initialized successfully');
+      debugPrint('NotificationService: initialized successfully.');
     } catch (e) {
-      debugPrint('Failed to initialize notifications: $e');
+      debugPrint('NotificationService: init failed – $e');
     }
   }
+
+  /// Top-level callback required for background notification handling.
+  @pragma('vm:entry-point')
+  static void _onBackgroundNotification(NotificationResponse response) {
+    debugPrint(
+        'NotificationService: background tap – payload: ${response.payload}');
+  }
+
+  // ─── Permission request ──────────────────────────────────────────────────────
 
   Future<void> requestPermissions() async {
     if (!isSupported) return;
     try {
       if (Platform.isAndroid) {
-        final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
-            _notificationsPlugin.resolvePlatformSpecificImplementation<
+        final androidImpl = _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
                 AndroidFlutterLocalNotificationsPlugin>();
-        await androidImplementation?.requestNotificationsPermission();
+        await androidImpl?.requestNotificationsPermission();
+        await androidImpl?.requestExactAlarmsPermission();
       } else if (Platform.isIOS) {
         await _notificationsPlugin
             .resolvePlatformSpecificImplementation<
                 IOSFlutterLocalNotificationsPlugin>()
-            ?.requestPermissions(
-              alert: true,
-              badge: true,
-              sound: true,
-            );
+            ?.requestPermissions(alert: true, badge: true, sound: true);
       }
     } catch (e) {
-      debugPrint('Error requesting notification permissions: $e');
+      debugPrint('NotificationService: requestPermissions error – $e');
     }
   }
 
+  // ─── One-time notification ───────────────────────────────────────────────────
+
+  /// Schedules a single notification at [scheduledDateTime].
   Future<void> scheduleNotification({
     required int id,
     required String title,
@@ -84,48 +144,102 @@ class NotificationService {
   }) async {
     if (!_initialized || !isSupported) return;
 
+    if (scheduledDateTime.isBefore(DateTime.now())) {
+      debugPrint(
+          'NotificationService: scheduled time is in the past – skipped.');
+      return;
+    }
+
     try {
-      final now = DateTime.now();
-      if (scheduledDateTime.isBefore(now)) {
-        return;
+      await _notificationsPlugin.zonedSchedule(
+        id: id,
+        title: title,
+        body: body,
+        scheduledDate: tz.TZDateTime.from(scheduledDateTime, tz.local),
+        notificationDetails: _buildNotificationDetails(),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        payload: payload,
+      );
+      debugPrint(
+          'NotificationService: scheduled one-time #$id at $scheduledDateTime');
+    } catch (e) {
+      debugPrint('NotificationService: scheduleNotification error – $e');
+    }
+  }
+
+  // ─── Repeating notification ──────────────────────────────────────────────────
+
+  /// Schedules a repeating notification based on [repeatType]:
+  ///   'Daily'    → repeats every day at the same time
+  ///   'Weekly'   → repeats every week on the same day + time
+  ///   'Monthly'  → repeats every month on the same day-of-month + time
+  ///   'One Time' → falls back to [scheduleNotification]
+  Future<void> scheduleRepeatingNotification({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledDateTime,
+    required String repeatType,
+    String? payload,
+  }) async {
+    if (!_initialized || !isSupported) return;
+
+    if (repeatType == 'One Time') {
+      await scheduleNotification(
+        id: id,
+        title: title,
+        body: body,
+        scheduledDateTime: scheduledDateTime,
+        payload: payload,
+      );
+      return;
+    }
+
+    try {
+      final tzDate = tz.TZDateTime.from(scheduledDateTime, tz.local);
+
+      DateTimeComponents matchComponents;
+      switch (repeatType) {
+        case 'Daily':
+          matchComponents = DateTimeComponents.time;
+          break;
+        case 'Weekly':
+          matchComponents = DateTimeComponents.dayOfWeekAndTime;
+          break;
+        case 'Monthly':
+          matchComponents = DateTimeComponents.dayOfMonthAndTime;
+          break;
+        default:
+          matchComponents = DateTimeComponents.time;
       }
 
       await _notificationsPlugin.zonedSchedule(
         id: id,
         title: title,
         body: body,
-        scheduledDate: tz.TZDateTime.from(scheduledDateTime, tz.local),
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'medicine_reminders_channel',
-            'Medicine Reminders',
-            channelDescription: 'Channel for medicine reminder notifications',
-            importance: Importance.max,
-            priority: Priority.high,
-            playSound: true,
-          ),
-          iOS: DarwinNotificationDetails(
-            presentAlert: true,
-            presentBadge: true,
-            presentSound: true,
-          ),
-        ),
+        scheduledDate: tzDate,
+        notificationDetails: _buildNotificationDetails(),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        matchDateTimeComponents: matchComponents,
         payload: payload,
       );
-      debugPrint('Scheduled notification $id at $scheduledDateTime');
+      debugPrint(
+          'NotificationService: scheduled $repeatType #$id starting $scheduledDateTime');
     } catch (e) {
-      debugPrint('Error scheduling notification: $e');
+      debugPrint(
+          'NotificationService: scheduleRepeatingNotification error – $e');
     }
   }
+
+  // ─── Cancellation ────────────────────────────────────────────────────────────
 
   Future<void> cancelNotification(int id) async {
     if (!_initialized || !isSupported) return;
     try {
       await _notificationsPlugin.cancel(id: id);
-      debugPrint('Canceled notification $id');
+      debugPrint('NotificationService: cancelled #$id');
     } catch (e) {
-      debugPrint('Error canceling notification: $e');
+      debugPrint('NotificationService: cancelNotification error – $e');
     }
   }
 
@@ -133,9 +247,9 @@ class NotificationService {
     if (!_initialized || !isSupported) return;
     try {
       await _notificationsPlugin.cancelAll();
-      debugPrint('Canceled all notifications');
+      debugPrint('NotificationService: cancelled all notifications');
     } catch (e) {
-      debugPrint('Error canceling all notifications: $e');
+      debugPrint('NotificationService: cancelAllNotifications error – $e');
     }
   }
 }

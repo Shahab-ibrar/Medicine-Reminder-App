@@ -171,6 +171,10 @@ class DashboardTab extends StatelessWidget {
         statusColor = Colors.red;
         statusIcon = Icons.cancel_rounded;
         break;
+      case 'Skipped':
+        statusColor = Colors.amber;
+        statusIcon = Icons.skip_next_rounded;
+        break;
       default:
         statusColor = Colors.orange;
         statusIcon = Icons.schedule_rounded;
@@ -302,6 +306,20 @@ class DashboardTab extends StatelessWidget {
                       elevation: 0,
                       backgroundColor: Colors.red.withOpacity(0.1),
                       foregroundColor: Colors.red,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () => medProvider.markAsSkipped(med),
+                    icon: const Icon(Icons.skip_next, size: 16),
+                    label: const Text('Skip'),
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: Colors.amber.withOpacity(0.1),
+                      foregroundColor: Colors.amber[800],
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
